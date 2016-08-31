@@ -1,0 +1,182 @@
+{
+    "Description": "EC2 platform extension template for ADOP/B",
+    "Mappings": {
+        "RegionMap": {
+            "eu-west-1": {
+                "AMI": "ami-7abd0209"
+            },
+            "us-west-1": {
+                "AMI": "ami-af4333cf"
+            },
+            "us-west-2": {
+                "AMI": "ami-d2c924b2"
+            },
+            "eu-central-1": {
+                "AMI": "ami-9bf712f4"
+            },
+            "us-east-1": {
+                "AMI": "ami-6d1c2007"
+            },
+            "ap-southeast-2": {
+                "AMI": "ami-fedafc9d"
+            },
+            "ap-south-1": {
+                "AMI": "ami-95cda6fa"
+            }
+        }
+    },
+    "Outputs": {
+        "AnsibleControlMachinePublicID": {
+            "Description": "AnsibleControlMachine-Public IP",
+            "Value" : {
+                "Fn::GetAtt":["AnsibleControlMachine", "PublicIp"]
+            }
+        },
+        "AnsibleTargetMachinePublicID": {
+            "Description": "AnsibleTargetMachinePublic-IP",
+            "Value" : {
+                "Fn::GetAtt":["AnsibleTargetMachine", "PublicIp"]
+            }
+        }
+    },
+    "Parameters": {
+        "EnvironmentName": {
+            "Description": "The name of the EC2 instance being created",
+            "Type": "String"
+        },
+        "EnvironmentSubnet": {
+            "Description": "The ID of the subnet to create the instance in",
+            "Type": "AWS::EC2::Subnet::Id"
+        },
+        "InstanceType": {
+            "Default": "t2.small",
+            "Description": "EC2 instance type",
+            "Type": "String"
+        },
+        "KeyName": {
+            "Description": "Key-pair name to use.",
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        },
+        "VPCId": {
+            "Description": "VPC ID where the instance will be created",
+            "Type": "AWS::EC2::VPC::Id"
+        },
+        "InboundCIDR": {
+            "Default": "0.0.0.0/0",
+            "Description": "Inbound Security Group CIDR Block",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "DefaultSecurityGroup": {
+            "Properties": {
+                "GroupDescription": "Enabling access to all IPs and below listed ports",
+                "SecurityGroupEgress": [
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "FromPort": "0",
+                        "IpProtocol": "tcp",
+                        "ToPort": "65535"
+                    },
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "FromPort": "0",
+                        "IpProtocol": "udp",
+                        "ToPort": "65535"
+                    }
+                ],
+                "SecurityGroupIngress": [
+                    {
+                        "CidrIp": {
+                            "Ref": "InboundCIDR"
+                        },
+                        "FromPort": "22",
+                        "IpProtocol": "tcp",
+                        "ToPort": "22"
+                    }],
+                "VpcId": {
+                    "Ref": "VPCId"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        },
+        "AnsibleControlMachine": {
+            "Type" : "AWS::EC2::Instance",
+            "Properties" : {
+                "InstanceType" : {
+                    "Ref": "InstanceType"
+                },
+                "ImageId" : { 
+                    "Fn::FindInMap": [
+                        "RegionMap",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "AMI"
+                    ]},
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "Tags" : [
+                    {"Key" : "Name", "Value" : { 
+                        "Fn::Join" : [ "-", [ { "Ref" : "AWS::StackName" }, "AnsibleControlMachine"]] 
+                    }}
+                ],
+                "NetworkInterfaces" : [
+                    {
+                        "AssociatePublicIpAddress": true,
+                        "DeleteOnTermination": true,
+                        "DeviceIndex": "0",
+                        "GroupSet": [{ "Ref" : "DefaultSecurityGroup" }],
+                        "SubnetId": { "Ref" : "EnvironmentSubnet" }
+                    }
+                ],
+                "UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+                    "#!/bin/bash -xe\n",
+                    "# install git\n",
+                    "yum install -y git\n",
+                    "# install pip\n",
+                    "yum install -y epel-release\n",
+                    "yum install -y python-pip",
+                    "# install ansible\n",
+                    "yum install -y gcc libffi-devel python-devel openssl-devel\n",
+                    "pip install paramiko PyYAML Jinja2 httplib2 six\n",
+                    "pip install ansible\n"
+                ]]}}
+            }
+        },
+        "AnsibleTargetMachine": {
+            "Type" : "AWS::EC2::Instance",
+            "Properties" : {
+                "InstanceType" : {
+                    "Ref": "InstanceType"
+                },
+                "ImageId" : { 
+                    "Fn::FindInMap": [
+                        "RegionMap",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "AMI"
+                    ]},
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "Tags" : [
+                    {"Key" : "Name", "Value" : { 
+                        "Fn::Join" : [ "-", [ { "Ref" : "AWS::StackName" }, "TargetMachine"]] 
+                    }}
+                ],
+                "NetworkInterfaces" : [
+                    {
+                        "AssociatePublicIpAddress": true,
+                        "DeleteOnTermination": true,
+                        "DeviceIndex": "0",
+                        "GroupSet": [{ "Ref" : "DefaultSecurityGroup" }],
+                        "SubnetId": { "Ref" : "EnvironmentSubnet" }
+                    }
+                ]
+            }
+        }
+    }
+}
